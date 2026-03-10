@@ -20,7 +20,7 @@ pip install -e .[ui,ibkr,dev]
 python examples/demo.py
 ```
 
-This starts the Streamlit terminal and subscribes to `LQD` and `HYG` using IBKR.
+This starts the live Streamlit terminal and subscribes to `LQD` and `HYG` using IBKR (no synthetic feed fallback).
 
 ## One-line logic registration
 
@@ -46,6 +46,7 @@ Source: `src/trading_dashboard/use_cases/lqd_hyg.py`.
 
 - IBKR must be running and API-enabled.
 - Default connection is `127.0.0.1:7496`.
+- This repository intentionally avoids synthetic/mock market feeds in runtime examples.
 - Optional desktop detachable renderer:
 
 ```bash
