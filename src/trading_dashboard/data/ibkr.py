@@ -21,7 +21,7 @@ except ImportError:  # optional dependency
 class IBKRDataSource(DataSource):
     """IBKR implementation for tick and bar streams via ib_insync."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 7497, client_id: int = 7) -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 7) -> None:
         self.host = host
         self.port = port
         self.client_id = client_id
