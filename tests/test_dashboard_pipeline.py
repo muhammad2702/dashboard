@@ -15,6 +15,9 @@ from trading_dashboard.ui.dashboard import DashboardLayout
 from trading_dashboard.ui.widgets import AutoViewWidget
 from trading_dashboard.use_cases.lqd_hyg import divergence_score, register_lqd_hyg_dashboard
 
+TEST_TIMEFRAME = "1m"
+TEST_VOLUME = 1_000
+
 
 class StubDataSource(DataSource):
     def __init__(self) -> None:
@@ -38,10 +41,19 @@ class StubDataSource(DataSource):
             if not self._running:
                 break
             close = base + (i * 0.1 if symbol == "LQD" else i * 0.07)
-            yield MarketBar(symbol, timeframe, close, close, close, close, 1_000, datetime.now(timezone.utc))
+            yield MarketBar(symbol, timeframe, close, close, close, close, TEST_VOLUME, datetime.now(timezone.utc))
             await asyncio.sleep(0.01)
         while self._running:
             await asyncio.sleep(0.05)
+
+
+async def publish_correlated_bars(router: DataRouter, lqd_prices: list[float], hyg_beta: float = 0.8) -> None:
+    """Feed deterministic paired bars where HYG is a scaled version of LQD for correlation tests."""
+    for lqd_close in lqd_prices:
+        hyg_close = lqd_close * hyg_beta
+        timestamp = datetime.now(timezone.utc)
+        await router.publish_bar(MarketBar("LQD", TEST_TIMEFRAME, lqd_close, lqd_close, lqd_close, lqd_close, TEST_VOLUME, timestamp))
+        await router.publish_bar(MarketBar("HYG", TEST_TIMEFRAME, hyg_close, hyg_close, hyg_close, hyg_close, TEST_VOLUME, timestamp))
 
 
 @pytest.mark.asyncio
@@ -53,7 +65,7 @@ async def test_expression_indicator_updates_widget_state() -> None:
     indicator = ExpressionIndicator(
         name="lqd-hyg-corr",
         symbols=("LQD", "HYG"),
-        timeframe="1m",
+        timeframe=TEST_TIMEFRAME,
         view="metric",
         compute=lambda s: {"value": s.correlation("LQD", "HYG")},
     )
@@ -65,9 +77,7 @@ async def test_expression_indicator_updates_widget_state() -> None:
     await engine.start()
     await asyncio.sleep(0.05)
 
-    for px in [100.0, 101.0, 102.0, 103.0]:
-        await router.publish_bar(MarketBar("LQD", "1m", px, px, px, px, 1000, datetime.now(timezone.utc)))
-        await router.publish_bar(MarketBar("HYG", "1m", px * 0.8, px * 0.8, px * 0.8, px * 0.8, 1000, datetime.now(timezone.utc)))
+    await publish_correlated_bars(router, lqd_prices=[100.0, 101.0, 102.0, 103.0], hyg_beta=0.8)
 
     await asyncio.sleep(0.05)
     await engine.stop()
@@ -81,8 +91,8 @@ def test_divergence_payload_schema() -> None:
     store = RollingStore(max_points=120)
     now = datetime.now(timezone.utc)
     for i in range(100):
-        store.ingest_bar(MarketBar("LQD", "1m", 110 + i * 0.05, 0, 0, 110 + i * 0.05, 1000, now))
-        store.ingest_bar(MarketBar("HYG", "1m", 85 + i * 0.02, 0, 0, 85 + i * 0.02, 1000, now))
+        store.ingest_bar(MarketBar("LQD", TEST_TIMEFRAME, 110 + i * 0.05, 0, 0, 110 + i * 0.05, TEST_VOLUME, now))
+        store.ingest_bar(MarketBar("HYG", TEST_TIMEFRAME, 85 + i * 0.02, 0, 0, 85 + i * 0.02, TEST_VOLUME, now))
 
     payload = divergence_score(store.snapshot(), window=80)
     assert payload is not None
