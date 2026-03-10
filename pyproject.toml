@@ -40,3 +40,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+
+[project.scripts]
+trading-terminal = "trading_dashboard.runtime.cli:main"

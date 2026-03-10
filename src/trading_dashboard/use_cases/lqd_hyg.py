@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from statistics import mean
 
-from trading_dashboard.app import DashboardToolkit
 from trading_dashboard.core.frame import LogicSnapshot
+from trading_dashboard.use_cases.base import AnalysisSpec, WidgetSpec
 
 
 def _zscore(values: list[float]) -> float:
@@ -53,7 +54,7 @@ def divergence_score(snapshot: LogicSnapshot, window: int = 80) -> dict | None:
             "value": z,
             "ratio": latest,
             "implication": implication,
-            "series": [{"x": i, "y": r, "symbol": "HYG/LQD"} for i, r in enumerate(ratio[-40:], 1)],
+            "series": [{"x": i, "y": r, "symbol": "HYG/LQD"} for i, r in enumerate(ratio[-60:], 1)],
             "view": "timeseries",
         },
     }
@@ -89,27 +90,33 @@ def market_implications(snapshot: LogicSnapshot) -> dict | None:
     }
 
 
-def register_lqd_hyg_dashboard(toolkit: DashboardToolkit) -> None:
-    """Register LQD/HYG analytics windows in one line each."""
+@dataclass(slots=True)
+class CreditCanaryModule:
+    name: str = "credit-canary"
+    symbols: tuple[str, ...] = ("LQD", "HYG")
 
-    toolkit.add_logic(
-        "lqd-hyg-correlation",
-        ("LQD", "HYG"),
-        rolling_correlation,
-        title="LQD vs HYG Correlation",
-        view="metric",
-    )
-    toolkit.add_logic(
-        "lqd-hyg-divergence",
-        ("LQD", "HYG"),
-        divergence_score,
-        title="LQD/HYG Divergence (Z)",
-        view="timeseries",
-    )
-    toolkit.add_logic(
-        "lqd-hyg-implications",
-        ("LQD", "HYG"),
-        market_implications,
-        title="Market Implications",
-        view="table",
-    )
+    def analyses(self) -> list[AnalysisSpec]:
+        return [
+            AnalysisSpec(
+                name="lqd-hyg-correlation",
+                symbols=("LQD", "HYG"),
+                compute=rolling_correlation,
+                widget=WidgetSpec(title="LQD vs HYG Correlation", view="metric", width=420, height=220),
+            ),
+            AnalysisSpec(
+                name="lqd-hyg-divergence",
+                symbols=("LQD", "HYG"),
+                compute=divergence_score,
+                widget=WidgetSpec(title="LQD/HYG Divergence (Z)", view="timeseries", width=700, height=320),
+            ),
+            AnalysisSpec(
+                name="lqd-hyg-implications",
+                symbols=("LQD", "HYG"),
+                compute=market_implications,
+                widget=WidgetSpec(title="Market Implications", view="table", width=620, height=280),
+            ),
+        ]
+
+
+def register_lqd_hyg_dashboard(toolkit) -> None:
+    toolkit.install_module(CreditCanaryModule())

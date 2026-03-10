@@ -17,7 +17,7 @@ class DashboardLayout:
 
     def register_widget(self, widget: DashboardWidget) -> None:
         self._widgets[widget.widget_id] = widget
-        self.workspace.add_window(widget.widget_id, widget.title, widget.view)
+        self.workspace.add_window(widget.widget_id, widget.title, widget.view, w=widget.width, h=widget.height)
 
     async def on_signal(self, signal: SignalPoint) -> None:
         for widget in self._widgets.values():

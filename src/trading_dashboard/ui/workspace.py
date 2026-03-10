@@ -22,9 +22,9 @@ class WorkspaceManager:
     def __init__(self) -> None:
         self._windows: dict[str, WindowSpec] = {}
 
-    def add_window(self, widget_id: str, title: str, view: str) -> None:
+    def add_window(self, widget_id: str, title: str, view: str, w: int = 420, h: int = 280) -> None:
         if widget_id not in self._windows:
-            self._windows[widget_id] = WindowSpec(widget_id=widget_id, title=title, view=view)
+            self._windows[widget_id] = WindowSpec(widget_id=widget_id, title=title, view=view, w=w, h=h)
 
     def detach(self, widget_id: str) -> None:
         self._windows[widget_id].detached = True

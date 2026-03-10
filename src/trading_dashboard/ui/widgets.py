@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Any
 
 from trading_dashboard.core.types import SignalPoint, WidgetPayload
@@ -11,6 +10,8 @@ class DashboardWidget(ABC):
     widget_id: str
     title: str
     view: str = "metric"
+    width: int = 420
+    height: int = 280
 
     @abstractmethod
     def consume_signal(self, signal: SignalPoint) -> WidgetPayload | None:
@@ -20,11 +21,21 @@ class DashboardWidget(ABC):
 class AutoViewWidget(DashboardWidget):
     """Generic widget for one-line logic registration."""
 
-    def __init__(self, widget_id: str, title: str, signal_name: str, view: str = "metric") -> None:
+    def __init__(
+        self,
+        widget_id: str,
+        title: str,
+        signal_name: str,
+        view: str = "metric",
+        width: int = 420,
+        height: int = 280,
+    ) -> None:
         self.widget_id = widget_id
         self.title = title
         self.signal_name = signal_name
         self.view = view
+        self.width = width
+        self.height = height
 
     def consume_signal(self, signal: SignalPoint) -> WidgetPayload | None:
         if signal.name != self.signal_name:
@@ -36,6 +47,7 @@ class AutoViewWidget(DashboardWidget):
         payload.setdefault("value", signal.value)
         payload.setdefault("confidence", signal.confidence)
         payload.setdefault("view", signal.metadata.get("view", self.view))
+        payload.setdefault("size", {"w": self.width, "h": self.height})
         return WidgetPayload(
             widget_id=self.widget_id,
             title=self.title,

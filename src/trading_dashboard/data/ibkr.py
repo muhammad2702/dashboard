@@ -18,6 +18,18 @@ except ImportError:  # optional dependency
     RealTimeBar = Any  # type: ignore
 
 
+def _timeframe_to_seconds(timeframe: str) -> int:
+    unit = timeframe[-1].lower()
+    value = int(timeframe[:-1])
+    if unit == "s":
+        return value
+    if unit == "m":
+        return value * 60
+    if unit == "h":
+        return value * 3600
+    raise ValueError(f"Unsupported timeframe '{timeframe}'. Use s/m/h suffix.")
+
+
 class IBKRDataSource(DataSource):
     """IBKR implementation for tick and bar streams via ib_insync."""
 
@@ -70,27 +82,63 @@ class IBKRDataSource(DataSource):
     async def subscribe_bars(self, symbol: str, timeframe: str):
         if not self._ib:
             raise RuntimeError("Data source must be started before subscribing.")
+
+        bucket_seconds = max(_timeframe_to_seconds(timeframe), 5)
         contract = Contract(symbol=symbol, secType="STK", exchange="SMART", currency="USD")
         bars = self._ib.reqRealTimeBars(contract, barSize=5, whatToShow="TRADES", useRTH=False)
 
         queue: asyncio.Queue[MarketBar] = asyncio.Queue(maxsize=1000)
+        bucket: dict[str, float | int] = {}
+
+        def flush_bucket(ts: datetime) -> None:
+            if not bucket:
+                return
+            normalized = MarketBar(
+                symbol=symbol,
+                timeframe=timeframe,
+                open=float(bucket["open"]),
+                high=float(bucket["high"]),
+                low=float(bucket["low"]),
+                close=float(bucket["close"]),
+                volume=float(bucket["volume"]),
+                timestamp=ts,
+            )
+            if not queue.full():
+                queue.put_nowait(normalized)
 
         def on_bar(_: list[RealTimeBar], has_new_bar: bool) -> None:
             if not has_new_bar:
                 return
             bar = bars[-1]
-            normalized = MarketBar(
-                symbol=symbol,
-                timeframe=timeframe,
-                open=float(bar.open_),
-                high=float(bar.high),
-                low=float(bar.low),
-                close=float(bar.close),
-                volume=float(bar.volume),
-                timestamp=datetime.fromtimestamp(bar.time, tz=timezone.utc),
-            )
-            if not queue.full():
-                queue.put_nowait(normalized)
+            ts = datetime.fromtimestamp(bar.time, tz=timezone.utc)
+            bar_open = float(bar.open_)
+            bar_high = float(bar.high)
+            bar_low = float(bar.low)
+            bar_close = float(bar.close)
+            bar_volume = float(bar.volume)
+
+            period_key = int(bar.time // bucket_seconds)
+            if bucket and int(bucket["period_key"]) != period_key:
+                flush_bucket(ts)
+                bucket.clear()
+
+            if not bucket:
+                bucket.update(
+                    {
+                        "period_key": period_key,
+                        "open": bar_open,
+                        "high": bar_high,
+                        "low": bar_low,
+                        "close": bar_close,
+                        "volume": bar_volume,
+                    }
+                )
+                return
+
+            bucket["high"] = max(float(bucket["high"]), bar_high)
+            bucket["low"] = min(float(bucket["low"]), bar_low)
+            bucket["close"] = bar_close
+            bucket["volume"] = float(bucket["volume"]) + bar_volume
 
         bars.updateEvent += on_bar
         try:
