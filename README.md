@@ -1,54 +1,90 @@
-# LQD vs HYG IBKR Terminal
+# Trading Dashboard Framework (detachable terminal workspace)
 
-This project is now focused on a single production use case:
-**LQD vs HYG credit-regime monitoring** with IBKR live data.
+A Python framework for building a Bloomberg-style trading terminal where you:
 
-## What it does
+1. write **only your signal logic**,
+2. register it in **one line**,
+3. get automatic data subscriptions + plotting widgets,
+4. place widgets as **detachable windows** in a shared workspace.
 
-- Connects to **IBKR TWS/Gateway on port `7496`** by default.
-- Streams LQD and HYG bars/ticks.
-- Computes ready-to-use windows:
-  - Rolling correlation regime (`coupled` / `decoupling` / `stress`)
-  - HYG/LQD divergence z-score (risk-on vs risk-off warning)
-  - Market implications table for quick interpretation
-- Supports detachable workspace state and optional desktop dock windows.
+## What changed vs. simple static dashboards
 
-## Quick start
+- **Detachable window model**: each panel has visibility/detach/position state in `WorkspaceManager`.
+- **One-line signal registration**: `toolkit.add_logic(...)` wires subscriptions, signal execution, and UI widget.
+- **Multi-symbol logic-first API**: your function receives a rolling snapshot and can compute pair-spread, correlation matrix, network data, etc.
+- **Renderer-agnostic architecture**:
+  - `Streamlit` renderer (web, fast iteration, show/hide + detach flags)
+  - `Qt` renderer (desktop, true floating dock widgets)
+
+## Architecture
+
+```text
+IBKRDataSource (default) / other adapters
+        │
+        ▼
+DataRouter (async fan-out)
+        │
+        ▼
+SignalEngine
+  + ExpressionIndicator (logic fn over rolling snapshot)
+        │
+        ▼
+DashboardLayout
+  + WorkspaceManager (detached/visible/position state)
+        │
+        ▼
+Renderer
+  - Streamlit terminal
+  - Qt dockable terminal (detachable windows)
+```
+
+## Your workflow (the important part)
+
+```python
+from trading_dashboard import DashboardToolkit
+
+# write your logic function only
+
+def pair_corr(snapshot):
+    corr = snapshot.correlation("AAPL", "MSFT", window=40)
+    return {
+        "value": corr,
+        "payload": {
+            "matrix": [[1.0, corr], [corr, 1.0]],
+            "labels": ["AAPL", "MSFT"],
+            "view": "matrix",
+        },
+    }
+
+# one line to register everything
+# (data pull + execution + render block)
+toolkit.add_logic("pair-corr", ("AAPL", "MSFT"), pair_corr, view="matrix")
+```
+
+No manual routing, no manual UI update loop per indicator, no per-indicator data adapters.
+
+## Key files
+
+- `src/trading_dashboard/app.py` – `DashboardToolkit` + `add_logic(...)`
+- `src/trading_dashboard/core/frame.py` – rolling snapshot helpers (`correlation`, `latest_bar`, etc.)
+- `src/trading_dashboard/signals/dsl.py` – `ExpressionIndicator`
+- `src/trading_dashboard/ui/workspace.py` – detachable/visible window state
+- `src/trading_dashboard/ui/qt_terminal.py` – desktop detachable dock windows
+- `src/trading_dashboard/ui/streamlit_app.py` – web renderer
+
+## Install
 
 ```bash
-pip install -e .[ui,ibkr,dev]
+pip install -e .[dev]
+pip install -e .[ui]       # streamlit renderer
+pip install -e .[desktop]  # detachable Qt desktop renderer
+pip install -e .[ibkr]     # IBKR integration
+```
+
+## Run demo
+
+```bash
 python examples/demo.py
 ```
 
-This starts the live Streamlit terminal and subscribes to `LQD` and `HYG` using IBKR (no synthetic feed fallback).
-
-## One-line logic registration
-
-You can still add custom logic with one line:
-
-```python
-toolkit.add_logic("my-metric", ("LQD", "HYG"), my_compute_fn, view="metric")
-```
-
-The framework handles data routing, execution, and widget wiring.
-
-## LQD/HYG packaged use-case
-
-`register_lqd_hyg_dashboard(toolkit)` registers three default windows:
-
-1. `lqd-hyg-correlation`
-2. `lqd-hyg-divergence`
-3. `lqd-hyg-implications`
-
-Source: `src/trading_dashboard/use_cases/lqd_hyg.py`.
-
-## Notes
-
-- IBKR must be running and API-enabled.
-- Default connection is `127.0.0.1:7496`.
-- This repository intentionally avoids synthetic/mock market feeds in runtime examples.
-- Optional desktop detachable renderer:
-
-```bash
-pip install -e .[desktop]
-```
+(Uses mock data by default. Swap to `IBKRDataSource` for live market data.)
